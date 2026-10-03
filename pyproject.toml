@@ -1,0 +1,149 @@
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name="finm37000-autumn-2026"
+version="0.2.1"
+authors = [
+    { name="Eric Patterson", email="ericpatterson11@gmail.com" },
+]
+description = "A package support FINM 37000 at the University of Chicago"
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
+dependencies = [
+    "databento",
+    "pandas",
+    "plotly",
+    "scipy",
+]
+
+[project.urls]
+Homepage = "https://github.com/pattersonem/finm37000-autumn-2026"
+Repository = "https://github.com/pattersonem/finm37000-autumn-2026.git"
+Issues = "https://github.com/pattersonem/finm37000-autumn-2026/issues"
+
+[project.optional-dependencies]
+demo = [
+    "ipykernel",
+    "jupyter",
+    "matplotlib",
+    "scikit-learn",
+    "statsmodels",
+    "torch",
+    "numpyro>=0.21.0",
+    "jax>=0.11.0,<0.11.1",
+    "jaxlib>=0.11.0,<0.11.1",
+    "arviz",
+    "graphviz",
+]
+dev = [
+    "pandas-stubs",
+    "plotly-stubs",
+    "scipy-stubs == 1.18.1.0",
+    "pytest == 9.1.1",
+    "mypy == 2.3.1",
+    "ruff == 0.16.5",
+    "nbqa >= 1.9.1",
+    "jupytext",
+]
+
+[dependency-groups]
+demo = [
+    "ipykernel",
+    "jupyter",
+    "matplotlib",
+    "scikit-learn",
+    "statsmodels",
+    "torch",
+    "numpyro>=0.21.0",
+    "jax>=0.11.0,<0.11.1",
+    "jaxlib>=0.11.0,<0.11.1",
+    "arviz",
+    "graphviz",
+]
+test = [
+    "pytest == 9.1.1",
+]
+lint = [
+    "mypy == 2.3.1",
+    "ruff == 0.16.5",
+    "nbqa >= 1.9.1",
+    "pandas-stubs",
+    "plotly-stubs",
+    "scipy-stubs == 1.18.1.0",
+    "jupytext",
+]
+dev = [
+    { include-group = "lint" },
+    { include-group = "test" },
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "db: Mark tests as requiring databento access. Slow and skipped by default."
+]
+addopts = [
+    "-m not db ",
+    "--import-mode=importlib",
+    "--doctest-modules",
+    "--strict-markers", 
+]
+
+[tool.mypy]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unreachable = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+packages = [
+    "finm37000",
+    "tests",
+]
+
+[tool.ruff.lint]
+select=[
+    "A",
+    "ANN",
+    "ARG",
+    "B",
+    "C4",
+    "D",
+    "DTZ",
+    "E",
+    "EM",
+    "EXE",
+    "F",
+    "FIX",
+    "I",
+    "ISC",
+    "ICN",
+    "N",
+    "NPY",
+    "PD",
+    "PERF",
+    "PIE",
+    "PL",
+    "Q",
+    "SIM",
+    "TC",
+    "W",
+    "YTT",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.pylint]
+max-args = 7
+
+[tool.ruff.lint.per-file-ignores]
+"src/finm37000/__init__.py" = ["I001"]
+"tests/*.py" = ["D"]
