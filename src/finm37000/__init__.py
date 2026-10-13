@@ -7,6 +7,12 @@ from .agg import (
 from .arb_free_svi import (
     fit_arb_free_svi as fit_arb_free_svi,
 )
+from .baseline import (
+    LinearBaseline as LinearBaseline,
+    evaluate_predictions as evaluate_predictions,
+    fit_linear_baseline as fit_linear_baseline,
+    run_baseline as run_baseline,
+)
 from .cache import (
     disk_cache as disk_cache,
     generate_cache_filename as generate_cache_filename,

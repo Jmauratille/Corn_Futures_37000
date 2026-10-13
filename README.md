@@ -104,6 +104,41 @@ closing price. Execution timing and transaction costs belong in the evaluation
 stage. Order-flow imbalance can be added after validating the side convention
 and aligning its bar boundaries with the price bars.
 
+## Baseline prediction
+
+`run_baseline` builds the prediction dataset, makes the purged chronological
+split, fits a standardized linear regression (optionally ridge) on the training
+rows only, and scores the holdout once against a benchmark that always predicts
+a zero return. Feature means, scales and coefficients come from training rows;
+changing holdout prices cannot change the fitted model.
+
+```bash
+# Real data, after pulling ZCH7 trades with finm37000.pull_data:
+python examples/baseline_predictor.py --symbol ZCH7 --bar 5min --horizon 3 \
+    --output baseline_report.json
+# No Databento key needed (tick-rounded random walk, should show no edge):
+python examples/baseline_predictor.py --synthetic
+```
+
+The JSON report records every setting (symbol, bar, window, horizon, test
+fraction, gap, ridge, features), the train and test date ranges and row counts,
+the purged rows, the coefficients, and holdout metrics:
+
+- `mae`, `rmse` for the model and for the zero-return benchmark.
+- `oos_r2_vs_zero` = `1 - SSE_model / SSE_zero`; above zero beats the benchmark.
+- `hit_rate`: share of scored rows whose predicted and realized returns have
+  the same sign. Corn moves in 0.25-cent ticks, so many short-horizon returns
+  are exactly zero. Rows with a zero realized return are not scored (no
+  direction), and a zero prediction is an abstention. `coverage` is the share
+  of nonzero-return rows that were scored; `zero_actual_share` reports how
+  often the price did not move. The zero benchmark has coverage 0 and no hit
+  rate (`null`).
+
+Fix settings before looking at holdout results. To choose between settings,
+split the training rows chronologically again and compare there; rerunning on
+the holdout until the numbers look good is tuning on the test set. The stored
+trade bars are built on `ts_event`, labeled at bar end.
+
 ## Roadmap and completion criteria
 
 | Stage | Existing work or proposed task | Completion criteria |
@@ -112,7 +147,7 @@ and aligning its bar boundaries with the price bars.
 | Historical trades | [Issues #1](https://github.com/Jmauratille/Corn_Futures_37000/issues/1) and [#2](https://github.com/Jmauratille/Corn_Futures_37000/issues/2); [PR #9](https://github.com/Jmauratille/Corn_Futures_37000/pull/9) | One agreed ZCH7 date range, reusable local storage, validation, and raw data excluded from Git. |
 | Features | [Issue #7](https://github.com/Jmauratille/Corn_Futures_37000/issues/7), completed by [PR #8](https://github.com/Jmauratille/Corn_Futures_37000/pull/8) | Reusable tested indicators; validate aggressor-side semantics before interpreting order flow. |
 | Prediction dataset | [Issue #10](https://github.com/Jmauratille/Corn_Futures_37000/issues/10), this contribution | Causal features, explicit future-return targets, chronological split with overlapping training targets removed, and synthetic tests. |
-| Baseline prediction | [Issue #11](https://github.com/Jmauratille/Corn_Futures_37000/issues/11) | Training-only preprocessing, a simple baseline model and a zero-return benchmark, evaluated on an untouched chronological holdout. |
+| Baseline prediction | [Issue #11](https://github.com/Jmauratille/Corn_Futures_37000/issues/11); `finm37000.baseline` and `examples/baseline_predictor.py` | Training-only preprocessing, a simple baseline model and a zero-return benchmark, evaluated on an untouched chronological holdout. |
 | Strategy evaluation | [Issue #12](https://github.com/Jmauratille/Corn_Futures_37000/issues/12) | Explicit entry timing, position changes, configurable fees/slippage, and both gross and net results on holdout data. |
 | USDA analysis | [Issue #13](https://github.com/Jmauratille/Corn_Futures_37000/issues/13), optional feasibility task | Identify a historical expectations source, actual releases and timestamps; analyze surprises without using data published later. Defer if expectations data is unavailable. |
 
