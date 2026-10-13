@@ -19,6 +19,11 @@ from .continuous import (
     shift_spec as shift_spec,
     splice_unadjusted as splice_unadjusted,
 )
+from .dataset import (
+    FEATURE_COLUMNS as FEATURE_COLUMNS,
+    build_prediction_dataset as build_prediction_dataset,
+    chronological_split as chronological_split,
+)
 from .db_env_util import (
     temp_env as temp_env,
     get_databento_api_key as get_databento_api_key,
