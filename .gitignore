@@ -33,3 +33,6 @@ venv/
 
 # IDEs
 .idea/
+
+# Raw market data pulled with finm37000.pull_data
+/data/
