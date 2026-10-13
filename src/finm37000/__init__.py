@@ -19,6 +19,13 @@ from .continuous import (
     shift_spec as shift_spec,
     splice_unadjusted as splice_unadjusted,
 )
+from .data_store import (
+    get_data_dir as get_data_dir,
+    history_path as history_path,
+    load_history as load_history,
+    monthly_windows as monthly_windows,
+    pull_history as pull_history,
+)
 from .db_env_util import (
     temp_env as temp_env,
     get_databento_api_key as get_databento_api_key,
