@@ -23,6 +23,15 @@ from .db_env_util import (
     temp_env as temp_env,
     get_databento_api_key as get_databento_api_key,
 )
+from .features import (
+    bollinger_bands as bollinger_bands,
+    exponential_moving_average as exponential_moving_average,
+    order_flow_imbalance as order_flow_imbalance,
+    realized_volatility as realized_volatility,
+    returns as returns,
+    signed_volume as signed_volume,
+    simple_moving_average as simple_moving_average,
+)
 from .futures import (
     RateCurve as RateCurve,
     build_short_rate_curve as build_short_rate_curve,
