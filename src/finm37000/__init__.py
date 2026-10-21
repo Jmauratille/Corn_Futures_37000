@@ -113,3 +113,10 @@ from .time import (
     tz_chicago as tz_chicago,
     us_business_day as us_business_day,
 )
+from .usda import (
+    SurpriseObservation as SurpriseObservation,
+    build_surprise_sample as build_surprise_sample,
+    compute_surprise as compute_surprise,
+    join_reactions as join_reactions,
+    price_reaction as price_reaction,
+)
