@@ -101,8 +101,8 @@ Fit preprocessing and models using training rows only. Neither `target_return`
 nor `target_end` belongs in model inputs. This prepares research data; it does
 not implement a trading strategy or assume an executable fill at the signal's
 closing price. Execution timing and transaction costs belong in the evaluation
-stage. Order-flow imbalance can be added after validating the side convention
-and aligning its bar boundaries with the price bars.
+stage. The `build_analysis_bars` helper below aligns order-flow imbalance with price
+bars; including it in the model feature set remains a separate choice.
 
 ## Roadmap and completion criteria
 
@@ -120,3 +120,56 @@ The team should agree on the contract, date range, bar duration, prediction
 horizon, and cost assumptions before comparing results. README changes and
 issues are places to record that agreement; each member should review the
 other members' PRs with specific questions or suggestions.
+
+## Completed analysis bars
+
+Build price and order-flow bars together so they describe the same intervals:
+
+```python
+import pandas as pd
+from finm37000 import build_analysis_bars, build_prediction_dataset
+
+# trades is one contract's raw Trade records from load_history or the API.
+# Use the ACTUAL exclusive coverage endpoint of the stored/downloaded data.
+coverage_end = pd.Timestamp("2026-10-01T00:00:00Z")
+bars = build_analysis_bars(trades, "5min", end=coverage_end)
+dataset = build_prediction_dataset(bars, window=20, horizon=3)
+```
+
+This helper requires `symbol`, `price`, positive whole-contract `size`, and
+`side` (`B`, `A`, or `N`). It prefers the timezone-aware `ts_event` column over
+the receive-time index. Otherwise, provide a timezone-aware event-time index
+named `ts_event` or `event_time`. Select one contract before calling it.
+
+All aggregation uses `[start, end)` intervals labeled at their right edge in
+UTC. For example, the bar labeled 09:05 contains trades from 09:00 inclusive
+through 09:05 exclusive; a trade exactly at 09:05 belongs to the next bar.
+OHLCV, trade counts and signed volume use the same resampling operation.
+`ofi` is buy volume minus sell volume. `unknown_volume` reports `N` side volume,
+which contributes to total volume but not signed volume. Price units stay as
+provided. Intervals without trades are omitted rather than forward-filled.
+Tied event timestamps retain their original row order; records are not deduplicated.
+
+The required `end` cutoff excludes future events and incomplete trailing bars.
+It must reflect known data coverage; a future date cannot establish that the
+last bar is complete. This is fixed-duration UTC aggregation, not exchange
+session aggregation, and does not account for delayed receipt of event data.
+Execution after a bar closes remains the simulator's responsibility. The
+existing plotting and aggregation helpers retain their current behavior.
+
+Run the example without a key or download:
+
+```bash
+python examples/analysis_bars.py
+```
+
+Or use an already stored history file (no API requests):
+
+```bash
+python examples/analysis_bars.py --symbol ZCH7 --end 2026-10-01T00:00:00Z
+```
+
+Replace that example endpoint with the actual coverage end of your local file.
+The synthetic run also builds the prediction dataset and checks the purged
+chronological train/test boundary. OFI is available in the bars but is not
+added to the fixed `FEATURE_COLUMNS` model inputs by this contribution.

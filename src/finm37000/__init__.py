@@ -7,6 +7,9 @@ from .agg import (
 from .arb_free_svi import (
     fit_arb_free_svi as fit_arb_free_svi,
 )
+from .bars import (
+    build_analysis_bars as build_analysis_bars,
+)
 from .cache import (
     disk_cache as disk_cache,
     generate_cache_filename as generate_cache_filename,
