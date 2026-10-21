@@ -10,6 +10,12 @@ from .arb_free_svi import (
 from .bars import (
     build_analysis_bars as build_analysis_bars,
 )
+from .baseline import (
+    LinearBaseline as LinearBaseline,
+    evaluate_predictions as evaluate_predictions,
+    fit_linear_baseline as fit_linear_baseline,
+    run_baseline as run_baseline,
+)
 from .cache import (
     disk_cache as disk_cache,
     generate_cache_filename as generate_cache_filename,
