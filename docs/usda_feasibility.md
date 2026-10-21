@@ -1,4 +1,4 @@
-# USDA surprise analysis — feasibility assessment (issue #13)
+# USDA analysis — feasibility assessment (issue #13)
 
 **Question.** Can we build a look-ahead-safe sample that joins USDA corn-report
 *surprises* (actual − pre-report market expectation) to ZC price moves, as the
