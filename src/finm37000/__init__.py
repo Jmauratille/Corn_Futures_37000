@@ -7,6 +7,9 @@ from .agg import (
 from .arb_free_svi import (
     fit_arb_free_svi as fit_arb_free_svi,
 )
+from .bars import (
+    build_analysis_bars as build_analysis_bars,
+)
 from .baseline import (
     LinearBaseline as LinearBaseline,
     evaluate_predictions as evaluate_predictions,
@@ -115,4 +118,11 @@ from .time import (
     get_cme_session_end as get_cme_session_end,
     tz_chicago as tz_chicago,
     us_business_day as us_business_day,
+)
+from .usda import (
+    SurpriseObservation as SurpriseObservation,
+    build_surprise_sample as build_surprise_sample,
+    compute_surprise as compute_surprise,
+    join_reactions as join_reactions,
+    price_reaction as price_reaction,
 )
