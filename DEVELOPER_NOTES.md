@@ -42,6 +42,18 @@ cumulative_fees`, and `equity = initial_capital + net_pnl`. `result.trades` hold
 one row per executed fill; `result.history` holds per-bar position, P&L, fees,
 close, equity, and the newly queued order.
 
+### Gross vs net and turnover
+
+`finm37000.backtest.summarize_period(result, start=None, end=None)` reports a
+`PeriodSummary` for bar ends in `[start, end)` of a full-sample run. P&L is the
+change in marked net P&L from the last bar before `start`, so a position carried
+into a held-out period earns only its in-period moves, and the strategy keeps its
+warm-up history. Turnover is `|Δposition|` per bar (a reversal counts as two
+contracts). Slippage is not stored separately because it is built into fill
+prices; it is recovered as `contracts × slippage_ticks × tick_size ×
+dollars_per_price_unit`, giving `gross = net + slippage + fees`. Daily Sharpe
+groups bars into CME sessions (17:00 Chicago roll) and uses dollar P&L.
+
 ### Execution model and its limits
 
 Modeled execution time is the next observed bar end minus `bar_duration`; for

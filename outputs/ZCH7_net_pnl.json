@@ -1,0 +1,71 @@
+{
+  "contract": "ZCH7",
+  "dataset": "GLBX.MDP3 trades",
+  "sample": {
+    "start": "2026-04-27 00:00:00-05:00",
+    "end_exclusive": "2026-10-27 00:00:00-05:00"
+  },
+  "bar_duration": "5min",
+  "rule": "BollingerMeanReversion(window=20): +1 below the rolling mean of closes, -1 above, hold on ties",
+  "horizon": "position held until the next signal change; signal evaluated at every bar close",
+  "execution": "next observed bar open (one-bar delay), market order",
+  "costs": {
+    "slippage_ticks_per_contract": 1,
+    "tick_size": 0.25,
+    "fee_per_contract_per_fill": 0.0,
+    "dollars_per_price_unit": 50.0
+  },
+  "max_position": 1,
+  "holdout_fraction": 0.3,
+  "settings_chosen_before_holdout": true,
+  "periods": {
+    "full": {
+      "start": "2026-04-27 05:05:00+00:00",
+      "end": "2026-10-27 04:30:00+00:00",
+      "bars": 22078,
+      "contracts_traded": 5321,
+      "fills": 2661,
+      "gross_pnl": 3850.0,
+      "slippage_cost": 66512.5,
+      "fees": 0.0,
+      "net_pnl": -62662.5,
+      "net_max_drawdown": 62687.5,
+      "time_in_market": 0.9990941208442794,
+      "daily_net_sharpe": -27.417935853965268,
+      "gross_pnl_per_contract": 0.7235482052245819,
+      "cost_per_contract": 12.5
+    },
+    "development": {
+      "start": "2026-04-27 05:05:00+00:00",
+      "end": "2026-09-08 02:20:00+00:00",
+      "bars": 15454,
+      "contracts_traded": 3741,
+      "fills": 1871,
+      "gross_pnl": 2075.0,
+      "slippage_cost": 46762.5,
+      "fees": 0.0,
+      "net_pnl": -44687.5,
+      "net_max_drawdown": 44912.5,
+      "time_in_market": 0.9987058366765886,
+      "daily_net_sharpe": -25.57558496735861,
+      "gross_pnl_per_contract": 0.5546645282010157,
+      "cost_per_contract": 12.5
+    },
+    "holdout": {
+      "start": "2026-09-08 02:25:00+00:00",
+      "end": "2026-10-27 04:30:00+00:00",
+      "bars": 6624,
+      "contracts_traded": 1580,
+      "fills": 790,
+      "gross_pnl": 1775.0,
+      "slippage_cost": 19750.0,
+      "fees": 0.0,
+      "net_pnl": -17975.0,
+      "net_max_drawdown": 18000.0,
+      "time_in_market": 1.0,
+      "daily_net_sharpe": -30.35995912244159,
+      "gross_pnl_per_contract": 1.1234177215189873,
+      "cost_per_contract": 12.5
+    }
+  }
+}
