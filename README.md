@@ -1,212 +1,125 @@
-# Corn_Futures_37000
+# Corn Futures: a cost-aware intraday mean-reversion study (CBOT ZC)
 
-We will use the DataBento data to pull historical corn trade price and volume data to analyze whether there are tradable trading patterns in the corn market. The focus is on CBOT corn futures (ZC), traded on CME Globex.
+**We built an end-to-end research pipeline for CBOT corn futures (ZC) — from
+raw Databento trades to a transaction-cost-aware backtest — and used it to test
+a simple intraday mean-reversion rule. The headline finding is a clean negative
+result: on six months of March-2027 corn (ZCH7), the rule loses money steadily,
+and the loss is driven almost entirely by trading costs rather than by a wrong
+directional view.**
 
-Rough outline:
-- We will need to pull historical data, prices and sizes, having the aggressor side would also be useful.  We will likely want to pull about 6 months of a single contract, for example the Mar2027 contract (ZCH7). Trade-level data (with the aggressor side) lets us see whether buyers or sellers are driving price moves, and we can aggregate it into bars (e.g. 1-minute or 5-minute) for analysis.
+![ZCH7 Bollinger mean-reversion net P&L](outputs/ZCH7_net_pnl.png)
 
-- We will want to create some utilities for analyzing trading features.  Examples of features would be moving averages, bollinger bands, etc. These will be stratified as the project progresses. Other candidates include returns over different horizons, realized volatility, volume, and order-flow imbalance (buy volume minus sell volume).
+## Headline result
 
-- We will use these features to see if we can predict future returns, or if we can design a trading strategy with a clear profitable pattern. Any strategy should be tested on data it was not built on, and should account for transaction costs (tick size and fees) so that results are realistic.
+Running a Bollinger middle-line mean-reversion rule on 5-minute ZCH7 bars
+(20-bar window) over **2026-04-26 to 2026-10-26**, with one tick of slippage per
+fill and no commissions, produces a **cumulative net P&L of −$62,462.50** on a
+single-contract strategy. The equity curve declines almost monotonically — there
+is no regime in which the rule works and then breaks.
 
-- Lastly, we can use some non-trading-based data to influence our predictions.  Namely, the USDA NASS data regarding corn production and stocks can be used to see what is the influence under prediction and over prediction of the market estimate is on the actual number.  We can look up historical estimates, and compare with the actual number, and create a simple linear model to estimate the price impact of the degree of over/under estimation. The key reports here are the monthly Crop Production report and the quarterly Grain Stocks report, where the surprise (actual minus market expectation) can be regressed against the price move after the release.
+The interpretation matters more than the number. The rule reverses position
+whenever price crosses its 20-bar average, so it trades constantly; at a 5-minute
+horizon, corn's price changes look close to a random walk, so each reversal pays
+the quarter-cent tick ($12.50/contract) without a reliable edge to cover it. The
+loss is a **microstructure-cost result, not a forecasting result**: a naive
+mean-reversion signal on liquid intraday corn does not survive even minimal,
+realistic execution costs. That is a useful conclusion for the team's broader
+question of whether tradable intraday patterns exist in this market.
+
+## What the project does
+
+The repository is a small, tested Python package (`finm37000`) implementing a
+reproducible pipeline, each stage reusable on its own:
+
+1. **Data** (`data_store`, `pull_data`) — download ZCH7 trade-level data once
+   from **Databento** (CME Globex, `GLBX.MDP3`), validate it, and cache it
+   locally; raw data is git-ignored.
+2. **Bars** (`bars.build_analysis_bars`) — aggregate trades into completed,
+   event-time 5-minute bars labeled at the bar **end**, with OHLCV and
+   order-flow imbalance computed over the same intervals and incomplete
+   trailing bars excluded.
+3. **Features** (`features`) — moving averages, Bollinger bands, horizon
+   returns, rolling realized volatility, and order-flow imbalance, each
+   computed using only information available at the bar close.
+4. **Prediction dataset** (`dataset`) — assemble causal features with an
+   explicit future-return target, then split chronologically with a **purge**
+   that removes training rows whose target window reaches into the test period.
+5. **Baseline predictor** (`baseline`) — a standardized (optionally ridge)
+   linear regression fit on training rows only and scored **once** on the
+   held-out period against a zero-return benchmark, reporting out-of-sample R²
+   and a tick-aware directional hit rate. On a random-walk control it correctly
+   shows no edge, confirming the evaluation is honest rather than optimistic.
+6. **Backtest** (`backtest/`) — an event-driven engine that executes each signal
+   at the **next** bar's open (a one-bar delay, so no look-ahead), applies
+   configurable per-tick slippage and per-contract fees, and tracks realized and
+   unrealized dollar P&L using the correct ZC contract spec (5,000 bushels,
+   cents/bushel, ¼-cent = $12.50 tick). This is what produces the result above.
+
+We also assessed a **USDA report-surprise** overlay (`usda`,
+`docs/usda_feasibility.md`): the actual figures and precise release times are
+obtainable (NASS QuickStats; reports at noon ET), but historical *pre-report
+market expectations* have no free, programmatic source, so we documented that
+component as a feasibility finding and deferred it rather than fabricate data.
+
+Correctness is enforced throughout: every stage validates its inputs and rejects
+look-ahead, and the package ships a full test suite (`pytest`) that runs on
+synthetic data with no market-data access required.
 
 ## Repository layout
 
-- `src/finm37000/` – course helper package (DataBento access, futures utilities, aggregation, plotting).
-- `src/*.ipynb` – course example notebooks.
-- `Group_Roles.md` – team roles.
+- `src/finm37000/` — the package (data, bars, features, dataset, baseline,
+  `backtest/`, usda, plus the course helpers).
+- `examples/` — runnable scripts for each stage, including the headline backtest.
+- `outputs/` — generated figures (e.g. `ZCH7_net_pnl.png`).
+- `docs/usda_feasibility.md` — the USDA data-source assessment.
+- `DEVELOPER_NOTES.md` — original project plan and engine-internals notes.
 
-## Team
+---
 
-See [Group_Roles.md](Group_Roles.md) for who is responsible for what.
+## How to run it
 
-
-## Setup and first run
-
-Use Python 3.12 or newer. From the repository root:
+Requires **Python 3.12+**. From the repository root:
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
+source .venv/bin/activate          # Windows PowerShell: .venv\Scripts\Activate.ps1
 python -m pip install -e .
 python -m pip install pytest
-python examples/prediction_dataset.py
-python -m pytest
+python -m pytest                   # full test suite, synthetic, no API key needed
 ```
 
-The example uses synthetic bars and does not require a Databento account or API
-key. It prints dataset sizes, the purged rows, and the train/test timestamp
-boundary; it does not report investment performance.
+### Reproduce the headline backtest (uses Databento CME data)
 
-For the existing historical-data notebook, install the notebook dependencies:
+Put a Databento API key in `~/.databento_api_key` (the download consumes
+credits; the script prints an estimate first), then:
 
 ```bash
-python -m pip install jupyter ipykernel matplotlib
-python -m jupyter notebook src/project_data.ipynb
+# Download the latest ~6 months of ZCH7 trades and backtest them:
+python examples/run_historical_corn_backtest.py --download
 ```
 
-Read the notebook configuration and cost estimate before running its download
-cells. It uses `get_databento_api_key()` to read a key from
-`~/.databento_api_key`; keep that file private and never commit the key or raw
-market data. The notebook also supports an existing `DATABENTO_API_KEY` environment variable.
-It caches data under `.cache/`, which is ignored
-by Git. The reusable `pull_data` command and `data/raw/` storage are proposed in
-[PR #9](https://github.com/Jmauratille/Corn_Futures_37000/pull/9) and are not yet
-available on main at the time of this update.
-
-## Prediction dataset
-
-`build_prediction_dataset` accepts one contract's bars with `close` and `volume`
-columns and a unique, increasing `DatetimeIndex` labeled at **bar end time**.
-The notebook's plotting helper uses start-labeled bars; do not pass those
-chart bars directly as if their timestamps were closing times. Build separate
-analysis bars with the existing helper, for example:
-
-```python
-from finm37000 import make_ohlcv
-
-# trades_ct is the event-time-indexed, single-contract frame from the notebook.
-bars = make_ohlcv(
-    trades_ct, "5min", index_name="event_time", label="right",
-)
-```
-
-All features use information available through that close. The target is the
-simple return over the next `horizon` observed bars; intervals with no trades
-are not forward-filled, so a horizon is a count of observations rather than a
-fixed elapsed duration. Missing and invalid input values are rejected.
-
-```python
-from finm37000 import (
-    FEATURE_COLUMNS, build_prediction_dataset, chronological_split,
-)
-
-dataset = build_prediction_dataset(bars, window=20, horizon=3)
-train, test = chronological_split(dataset, test_fraction=0.2)
-X_train = train[list(FEATURE_COLUMNS)]
-y_train = train["target_return"]
-X_test = test[list(FEATURE_COLUMNS)]
-y_test = test["target_return"]
-```
-
-The features are one-bar simple return, close relative to its rolling average,
-Bollinger bandwidth, unannualized rolling log-return volatility, and bar volume.
-Warm-up rows and rows without known future targets are removed. `target_end`
-records the future close's timestamp. The split reserves the latest rows for
-testing and removes training rows whose targets end at or after the first test
-observation; `gap` can exclude additional dataset rows before testing.
-
-Fit preprocessing and models using training rows only. Neither `target_return`
-nor `target_end` belongs in model inputs. This prepares research data; it does
-not implement a trading strategy or assume an executable fill at the signal's
-closing price. Execution timing and transaction costs belong in the evaluation
-stage. The `build_analysis_bars` helper below aligns order-flow imbalance with price
-bars; including it in the model feature set remains a separate choice.
-
-## Baseline prediction
-
-`run_baseline` builds the prediction dataset, makes the purged chronological
-split, fits a standardized linear regression (optionally ridge) on the training
-rows only, and scores the holdout once against a benchmark that always predicts
-a zero return. Feature means, scales and coefficients come from training rows;
-changing holdout prices cannot change the fitted model.
+This saves the net-P&L chart to `outputs/ZCH7_net_pnl.png`. If you have already
+cached data, pass the actual exclusive coverage endpoint instead of downloading:
 
 ```bash
-# Real data, after pulling ZCH7 trades with finm37000.pull_data:
-python examples/baseline_predictor.py --symbol ZCH7 --bar 5min --horizon 3 \
-    --end 2026-10-01T00:00:00Z --output baseline_report.json
-# No Databento key needed (tick-rounded random walk, should show no edge):
-python examples/baseline_predictor.py --synthetic
+python examples/run_historical_corn_backtest.py --end 2026-10-26T00:00:00-05:00
 ```
 
-The JSON report records every setting (symbol, bar, window, horizon, test
-fraction, gap, ridge, features), the train and test date ranges and row counts,
-the purged rows, the coefficients, and holdout metrics:
+Tune the run with `--window`, `--bar-rule`, `--slippage-ticks`, and
+`--fee-per-contract`.
 
-- `mae`, `rmse` for the model and for the zero-return benchmark.
-- `oos_r2_vs_zero` = `1 - SSE_model / SSE_zero`; above zero beats the benchmark.
-- `hit_rate`: share of scored rows whose predicted and realized returns have
-  the same sign. Corn moves in 0.25-cent ticks, so many short-horizon returns
-  are exactly zero. Rows with a zero realized return are not scored (no
-  direction), and a zero prediction is an abstention. `coverage` is the share
-  of nonzero-return rows that were scored; `zero_actual_share` reports how
-  often the price did not move. The zero benchmark has coverage 0 and no hit
-  rate (`null`).
-
-Fix settings before looking at holdout results. To choose between settings,
-split the training rows chronologically again and compare there; rerunning on
-the holdout until the numbers look good is tuning on the test set. The stored
-trade bars come from `build_analysis_bars` (completed event-time bars,
-labeled at bar end); `--end` must be the exclusive end of the stored data's
-coverage so a partial last bar is never used.
-
-## Roadmap and completion criteria
-
-| Stage | Existing work or proposed task | Completion criteria |
-| --- | --- | --- |
-| Environment | [Issue #4](https://github.com/Jmauratille/Corn_Futures_37000/issues/4) | A teammate can install the package, run the synthetic example and tests, then open the data notebook. |
-| Historical trades | [Issues #1](https://github.com/Jmauratille/Corn_Futures_37000/issues/1) and [#2](https://github.com/Jmauratille/Corn_Futures_37000/issues/2); [PR #9](https://github.com/Jmauratille/Corn_Futures_37000/pull/9) | One agreed ZCH7 date range, reusable local storage, validation, and raw data excluded from Git. |
-| Features | [Issue #7](https://github.com/Jmauratille/Corn_Futures_37000/issues/7), completed by [PR #8](https://github.com/Jmauratille/Corn_Futures_37000/pull/8) | Reusable tested indicators; validate aggressor-side semantics before interpreting order flow. |
-| Prediction dataset | [Issue #10](https://github.com/Jmauratille/Corn_Futures_37000/issues/10), this contribution | Causal features, explicit future-return targets, chronological split with overlapping training targets removed, and synthetic tests. |
-| Baseline prediction | [Issue #11](https://github.com/Jmauratille/Corn_Futures_37000/issues/11); `finm37000.baseline` and `examples/baseline_predictor.py` | Training-only preprocessing, a simple baseline model and a zero-return benchmark, evaluated on an untouched chronological holdout. |
-| Strategy evaluation | [Issue #12](https://github.com/Jmauratille/Corn_Futures_37000/issues/12) | Explicit entry timing, position changes, configurable fees/slippage, and both gross and net results on holdout data. |
-| USDA analysis | [Issue #13](https://github.com/Jmauratille/Corn_Futures_37000/issues/13), optional feasibility task | Identify a historical expectations source, actual releases and timestamps; analyze surprises without using data published later. Defer if expectations data is unavailable. |
-
-The team should agree on the contract, date range, bar duration, prediction
-horizon, and cost assumptions before comparing results. README changes and
-issues are places to record that agreement; each member should review the
-other members' PRs with specific questions or suggestions.
-
-## Completed analysis bars
-
-Build price and order-flow bars together so they describe the same intervals:
-
-```python
-import pandas as pd
-from finm37000 import build_analysis_bars, build_prediction_dataset
-
-# trades is one contract's raw Trade records from load_history or the API.
-# Use the ACTUAL exclusive coverage endpoint of the stored/downloaded data.
-coverage_end = pd.Timestamp("2026-10-01T00:00:00Z")
-bars = build_analysis_bars(trades, "5min", end=coverage_end)
-dataset = build_prediction_dataset(bars, window=20, horizon=3)
-```
-
-This helper requires `symbol`, `price`, positive whole-contract `size`, and
-`side` (`B`, `A`, or `N`). It prefers the timezone-aware `ts_event` column over
-the receive-time index. Otherwise, provide a timezone-aware event-time index
-named `ts_event` or `event_time`. Select one contract before calling it.
-
-All aggregation uses `[start, end)` intervals labeled at their right edge in
-UTC. For example, the bar labeled 09:05 contains trades from 09:00 inclusive
-through 09:05 exclusive; a trade exactly at 09:05 belongs to the next bar.
-OHLCV, trade counts and signed volume use the same resampling operation.
-`ofi` is buy volume minus sell volume. `unknown_volume` reports `N` side volume,
-which contributes to total volume but not signed volume. Price units stay as
-provided. Intervals without trades are omitted rather than forward-filled.
-Tied event timestamps retain their original row order; records are not deduplicated.
-
-The required `end` cutoff excludes future events and incomplete trailing bars.
-It must reflect known data coverage; a future date cannot establish that the
-last bar is complete. This is fixed-duration UTC aggregation, not exchange
-session aggregation, and does not account for delayed receipt of event data.
-Execution after a bar closes remains the simulator's responsibility. The
-existing plotting and aggregation helpers retain their current behavior.
-
-Run the example without a key or download:
+### Explore the pipeline without a key (synthetic)
 
 ```bash
-python examples/analysis_bars.py
+python examples/run_corn_backtest.py        # synthetic backtest demo
+python examples/analysis_bars.py            # event-time bars + prediction dataset
+python examples/baseline_predictor.py --synthetic   # predictor shows no edge on a random walk
+python examples/usda_feasibility.py         # USDA surprise -> price-reaction join
 ```
 
-Or use an already stored history file (no API requests):
+## Future work
 
-```bash
-python examples/analysis_bars.py --symbol ZCH7 --end 2026-10-01T00:00:00Z
-```
-
-Replace that example endpoint with the actual coverage end of your local file.
-The synthetic run also builds the prediction dataset and checks the purged
-chronological train/test boundary. OFI is available in the bars but is not
-added to the fixed `FEATURE_COLUMNS` model inputs by this contribution.
+Natural extensions: test entry-at-the-band / exit-at-the-middle variants and
+longer horizons where costs bite less; add order-flow-imbalance features to the
+predictor; and, if a historical expectations series can be sourced, complete the
+USDA surprise regression. See `DEVELOPER_NOTES.md` for the original plan.
