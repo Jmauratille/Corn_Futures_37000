@@ -71,3 +71,14 @@ The direct history copies prioritize a clear causal implementation and may becom
 Ten new engine tests passed, alongside eight prior strategy tests, and the synthetic demo ran successfully. Tests cover known dollar outcomes, reversals, long/short P&L, adverse slippage, fees, additions/reductions, causal history prefixes, unchanged inputs, gaps, final unfilled signals, invalid data/targets, and Bollinger integration.
 
 Validation ran against the actual backtest modules with a temporary minimal top-level package initializer to bypass unavailable Databento/Plotly dependencies. That harness is not included. A full import in the user's configured environment and a real market-data backtest have not been run here.
+
+
+# Full history backtest
+
+To run the full history backtest, first download the data
+
+python examples/run_historical_corn_backtest.py --download
+
+Then specify the end date and start the run:
+
+python examples/run_historical_corn_backtest.py --end "2026-10-26T00:00:00-05:00"
