@@ -138,7 +138,7 @@ def test_report_records_settings_and_respects_split() -> None:
 def test_holdout_changes_do_not_change_the_fit() -> None:
     bars = random_walk_bars()
     changed = bars.copy()
-    changed.iloc[-50:, changed.columns.get_loc("close")] *= 1.1
+    changed.loc[changed.index[-50:], "close"] *= 1.1
     original = run_baseline(bars, window=10)
     altered = run_baseline(changed, window=10)
     assert original["model"] == altered["model"]

@@ -16,42 +16,53 @@ from .strategy import Strategy
 def validate_bars(bars: pd.DataFrame) -> None:
     """Require nonempty, chronological, timezone-aware bar-end OHLC data."""
     if bars.empty:
-        raise ValueError("bars must not be empty.")
+        msg = "bars must not be empty."
+        raise ValueError(msg)
     if not isinstance(bars.index, pd.DatetimeIndex):
-        raise ValueError("bars must have a DatetimeIndex of bar-end timestamps.")
+        msg = "bars must have a DatetimeIndex of bar-end timestamps."
+        raise ValueError(msg)
     if (bars.index.tz is None or bars.index.hasnans
             or not bars.index.is_unique or not bars.index.is_monotonic_increasing):
-        raise ValueError("Bar ends must be timezone-aware, unique, and increasing.")
+        msg = "Bar ends must be timezone-aware, unique, and increasing."
+        raise ValueError(msg)
     columns = ["open", "high", "low", "close"]
     missing = set(columns) - set(bars.columns)
     if missing:
-        raise ValueError(f"Missing OHLC columns: {sorted(missing)}")
+        msg = f"Missing OHLC columns: {sorted(missing)}"
+        raise ValueError(msg)
     for column in columns:
         values = bars[column]
         if (not pd.api.types.is_numeric_dtype(values)
                 or pd.api.types.is_bool_dtype(values)
                 or pd.api.types.is_complex_dtype(values)
                 or not np.isfinite(values.to_numpy(dtype=float)).all()):
-            raise ValueError(f"{column} must contain finite real prices.")
+            msg = f"{column} must contain finite real prices."
+            raise ValueError(msg)
     if ((bars["low"] > bars[["open", "close"]].min(axis=1)).any()
             or (bars["high"] < bars[["open", "close"]].max(axis=1)).any()
             or (bars["low"] > bars["high"]).any()):
-        raise ValueError("OHLC prices are inconsistent.")
+        msg = "OHLC prices are inconsistent."
+        raise ValueError(msg)
     if "symbol" in bars and (bars["symbol"].isna().any()
-                              or bars["symbol"].nunique() != 1):
-        raise ValueError("bars must contain exactly one nonmissing symbol.")
+                              or len(bars["symbol"].unique()) != 1):
+        msg = "bars must contain exactly one nonmissing symbol."
+        raise ValueError(msg)
 
 
 def _validate_config(config: BacktestConfig) -> None:
     for name in ("initial_capital", "dollars_per_price_unit", "tick_size"):
         if not np.isfinite(getattr(config, name)) or getattr(config, name) <= 0:
-            raise ValueError(f"{name} must be finite and positive.")
+            msg = f"{name} must be finite and positive."
+            raise ValueError(msg)
     if not np.isfinite(config.fee_per_contract) or config.fee_per_contract < 0:
-        raise ValueError("fee_per_contract must be finite and nonnegative.")
+        msg = "fee_per_contract must be finite and nonnegative."
+        raise ValueError(msg)
     for name, minimum in (("slippage_ticks", 0), ("max_position", 1)):
         value = getattr(config, name)
-        if isinstance(value, bool) or not isinstance(value, Integral) or value < minimum:
-            raise ValueError(f"{name} must be an integer >= {minimum}.")
+        if (isinstance(value, bool) or not isinstance(value, Integral)
+                or value < minimum):
+            msg = f"{name} must be an integer >= {minimum}."
+            raise ValueError(msg)
 
 
 def apply_fill(
@@ -67,9 +78,11 @@ def apply_fill(
     quantity = fill.quantity
     new = old + quantity
     if quantity == 0:
-        raise ValueError("A fill must have nonzero quantity.")
+        msg = "A fill must have nonzero quantity."
+        raise ValueError(msg)
     if abs(new) > config.max_position:
-        raise ValueError("Fill exceeds max_position.")
+        msg = "Fill exceeds max_position."
+        raise ValueError(msg)
     realized = portfolio.realized_pnl
     entry = portfolio.average_entry_price
     if old == 0 or old * quantity > 0:
@@ -77,7 +90,8 @@ def apply_fill(
     else:
         closed = min(abs(old), abs(quantity))
         direction = 1 if old > 0 else -1
-        realized += closed * direction * (fill.price - entry) * config.dollars_per_price_unit
+        realized += (closed * direction * (fill.price - entry)
+                     * config.dollars_per_price_unit)
         if new == 0:
             entry = 0.0
         elif old * new < 0:
@@ -99,8 +113,10 @@ def mark_to_market(
 def make_history_record(
     timestamp: pd.Timestamp, portfolio: PortfolioState, config: BacktestConfig,
 ) -> dict:
+    """Build one history row with net P&L and equity for the bar close."""
     record = {"timestamp": timestamp, **asdict(portfolio)}
-    net_pnl = portfolio.realized_pnl + portfolio.unrealized_pnl - portfolio.cumulative_fees
+    net_pnl = (portfolio.realized_pnl + portfolio.unrealized_pnl
+               - portfolio.cumulative_fees)
     record.update(net_pnl=net_pnl, equity=config.initial_capital + net_pnl)
     return record
 
@@ -129,20 +145,26 @@ def run_backtest(
     _validate_config(config)
     offset = to_offset(bar_duration)
     if not isinstance(offset, Tick) or offset.nanos <= 0:
-        raise ValueError("bar_duration must be a positive fixed duration.")
+        msg = "bar_duration must be a positive fixed duration."
+        raise ValueError(msg)
     duration = pd.Timedelta(offset.nanos, unit="ns")
-    starts = bars.index - duration
-    if len(bars) > 1 and (starts[1:] < bars.index[:-1]).any():
-        raise ValueError("Bars overlap: check bar_duration against bar-end timestamps.")
+    # validate_bars guarantees a DatetimeIndex; restate it for the type checker.
+    bar_ends = pd.DatetimeIndex(bars.index)
+    starts = bar_ends - duration
+    if len(bars) > 1 and (starts[1:] < bar_ends[:-1]).any():
+        msg = "Bars overlap: check bar_duration against bar-end timestamps."
+        raise ValueError(msg)
     if "symbol" in bars and bars["symbol"].iloc[0] != config.symbol:
-        raise ValueError("bars symbol does not match config.symbol.")
+        msg = "bars symbol does not match config.symbol."
+        raise ValueError(msg)
 
     portfolio = PortfolioState()
     execution = NextOpenExecution(config)
     pending: Order | None = None
-    records = []
-    fills = []
-    for i, (timestamp, bar) in enumerate(bars.iterrows()):
+    records: list[dict] = []
+    fills: list[dict] = []
+    for i, (_, bar) in enumerate(bars.iterrows()):
+        timestamp = bar_ends[i]
         # This order was decided at the PREVIOUS observed bar's close.
         if pending is not None:
             fill = execution.fill(pending, starts[i], float(bar["open"]))
@@ -152,12 +174,17 @@ def run_backtest(
 
         portfolio = mark_to_market(portfolio, float(bar["close"]), config)
         # A copy prevents an accidental strategy mutation from altering input bars.
-        target = strategy.on_bar(bars.iloc[:i + 1].copy(), portfolio)
-        if isinstance(target, bool) or not isinstance(target, Integral):
-            raise ValueError("Strategy must return an integer target position.")
-        target = int(target)
+        # Typed as object so the defensive runtime check below is not elided:
+        # Strategy is a Protocol, and a faulty implementation could return a
+        # non-integer despite the declared return type.
+        signal: object = strategy.on_bar(bars.iloc[:i + 1].copy(), portfolio)
+        if isinstance(signal, bool) or not isinstance(signal, Integral):
+            msg = "Strategy must return an integer target position."
+            raise ValueError(msg)
+        target = int(signal)
         if abs(target) > config.max_position:
-            raise ValueError("Strategy target exceeds max_position.")
+            msg = "Strategy target exceeds max_position."
+            raise ValueError(msg)
         quantity = target - portfolio.position
         if quantity:
             pending = Order(signal_time=timestamp, quantity=quantity)
