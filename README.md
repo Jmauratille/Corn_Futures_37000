@@ -7,24 +7,35 @@ result: on six months of March-2027 corn (ZCH7), the rule loses money steadily,
 and the loss is driven almost entirely by trading costs rather than by a wrong
 directional view.**
 
-![ZCH7 Bollinger mean-reversion net P&L](outputs/ZCH7_net_pnl.png)
+![ZCH7 Bollinger mean-reversion gross vs net P&L](outputs/ZCH7_net_pnl.png)
 
 ## Headline result
 
 Running a Bollinger middle-line mean-reversion rule on 5-minute ZCH7 bars
-(20-bar window) over **2026-04-26 to 2026-10-26**, with one tick of slippage per
-fill and no commissions, produces a **cumulative net P&L of −$62,462.50** on a
-single-contract strategy. The equity curve declines almost monotonically — there
-is no regime in which the rule works and then breaks.
+(20-bar window) over **2026-04-27 to 2026-10-27** (end exclusive), with one tick
+of slippage per contract traded, no commissions, and a one-bar execution delay,
+produces a **cumulative net P&L of −$62,662.50** on a single-contract strategy.
+The rule and its settings were fixed in advance; the last 30% of bars
+(from 2026-09-08) is reported separately as held-out data and was not used to
+choose anything.
 
-The interpretation matters more than the number. The rule reverses position
-whenever price crosses its 20-bar average, so it trades constantly; at a 5-minute
-horizon, corn's price changes look close to a random walk, so each reversal pays
-the quarter-cent tick ($12.50/contract) without a reliable edge to cover it. The
-loss is a **microstructure-cost result, not a forecasting result**: a naive
-mean-reversion signal on liquid intraday corn does not survive even minimal,
-realistic execution costs. That is a useful conclusion for the team's broader
-question of whether tradable intraday patterns exist in this market.
+| Period | Bars | Gross P&L | Slippage | Net P&L | Contracts traded |
+|---|---:|---:|---:|---:|---:|
+| Development (Apr 27 – Sep 8) | 15,454 | +$2,075.00 | $46,762.50 | −$44,687.50 | 3,741 |
+| **Held-out (Sep 8 – Oct 27)** | 6,624 | **+$1,775.00** | $19,750.00 | **−$17,975.00** | 1,580 |
+| Full sample | 22,078 | +$3,850.00 | $66,512.50 | −$62,662.50 | 5,321 |
+
+The split between gross and net is the finding. **Before costs the rule is
+slightly profitable in both periods** — about $0.55–$1.12 per contract traded —
+but it reverses whenever price crosses its 20-bar average, trading ~5,300
+contracts in six months, and each contract pays a quarter-cent tick ($12.50).
+Costs are roughly 17× the gross edge, so the net equity curve declines almost
+monotonically with no regime in which the rule works. The loss is a
+**microstructure-cost result, not a forecasting result**: at a 5-minute horizon
+corn's price changes are close to a random walk, and a naive mean-reversion
+signal on liquid intraday corn does not survive even minimal, realistic
+execution costs. Full assumptions and per-period metrics (drawdown, daily
+Sharpe, time in market) are recorded in `outputs/ZCH7_net_pnl.json`.
 
 ## What the project does
 
@@ -53,7 +64,9 @@ reproducible pipeline, each stage reusable on its own:
    at the **next** bar's open (a one-bar delay, so no look-ahead), applies
    configurable per-tick slippage and per-contract fees, and tracks realized and
    unrealized dollar P&L using the correct ZC contract spec (5,000 bushels,
-   cents/bushel, ¼-cent = $12.50 tick). This is what produces the result above.
+   cents/bushel, ¼-cent = $12.50 tick). `summarize_period` splits any period
+   into gross P&L, slippage, fees, net P&L and turnover. This is what produces
+   the result above.
 
 We also assessed a **USDA report-surprise** overlay (`usda`,
 `docs/usda_feasibility.md`): the actual figures and precise release times are
@@ -98,15 +111,18 @@ credits; the script prints an estimate first), then:
 python examples/run_historical_corn_backtest.py --download
 ```
 
-This saves the net-P&L chart to `outputs/ZCH7_net_pnl.png`. If you have already
-cached data, pass the actual exclusive coverage endpoint instead of downloading:
+This prints gross/net/turnover for the development, held-out and full periods,
+saves the chart to `outputs/ZCH7_net_pnl.png` and the assumptions and metrics to
+`outputs/ZCH7_net_pnl.json`. If you have already cached data, pass the actual
+exclusive coverage endpoint instead of downloading:
 
 ```bash
-python examples/run_historical_corn_backtest.py --end 2026-10-26T00:00:00-05:00
+python examples/run_historical_corn_backtest.py --end 2026-10-27T00:00:00-05:00
 ```
 
-Tune the run with `--window`, `--bar-rule`, `--slippage-ticks`, and
-`--fee-per-contract`.
+Configure the run with `--window`, `--bar-rule`, `--slippage-ticks`,
+`--fee-per-contract` and `--holdout-fraction` (default 0.3). Choose settings
+before looking at held-out results, not by tuning on them.
 
 ### Explore the pipeline without a key (synthetic)
 

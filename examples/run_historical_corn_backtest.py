@@ -1,4 +1,8 @@
-"""Backtest six calendar months of ZCH7 trades and save a net-P&L PNG.
+"""Backtest six calendar months of ZCH7 trades; report gross vs net P&L.
+
+The rule and its settings are fixed before the run. The final
+``--holdout-fraction`` of bars is reported separately as held-out data;
+do not tune --window, --bar-rule or costs on its results.
 
 Cached history (use its actual exclusive coverage endpoint):
     python examples/run_historical_corn_backtest.py --end 2026-10-26T00:00:00-05:00
@@ -10,6 +14,8 @@ Downloads consume Databento credits. No fills are printed and no orders are sent
 """
 
 import argparse
+import json
+from dataclasses import asdict
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -18,7 +24,8 @@ import pandas as pd
 from finm37000 import build_analysis_bars
 from finm37000.backtest.bollinger import BollingerMeanReversion
 from finm37000.backtest.engine import run_backtest
-from finm37000.backtest.models import BacktestConfig
+from finm37000.backtest.metrics import PeriodSummary, summarize_period
+from finm37000.backtest.models import BacktestConfig, BacktestResult
 
 SYMBOL = "ZCH7"
 
@@ -45,9 +52,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         default="cents",
                         help="Units already used by the price column. "
                              "No price conversion is done.")
+    parser.add_argument("--holdout-fraction", type=float, default=0.3,
+                        help="Final fraction of bars reported as held-out data.")
     parser.add_argument("--output", type=Path,
-                        default=Path("outputs/ZCH7_net_pnl.png"))
+                        default=Path("outputs/ZCH7_net_pnl.png"),
+                        help="PNG chart; a .json report is written beside it.")
     args = parser.parse_args(argv)
+    if not 0 < args.holdout_fraction < 1:
+        parser.error("--holdout-fraction must be between 0 and 1.")
     if not args.download and not args.end:
         parser.error("Cached data requires --end: supply the actual exclusive "
                      "coverage endpoint.")
@@ -150,10 +162,20 @@ def select_trades(
     return selected
 
 
+def gross_pnl_path(result: BacktestResult) -> pd.Series:
+    """Cumulative P&L before slippage and fees, at each bar close."""
+    history, config = result.history, result.config
+    traded = history["position"].diff().fillna(history["position"]).abs()
+    slippage = (traded.cumsum() * config.slippage_ticks * config.tick_size
+                * config.dollars_per_price_unit)
+    return history["net_pnl"] + history["cumulative_fees"] + slippage
+
+
 def save_pnl_plot(  # noqa: PLR0913 (plot annotations describe the run)
-    history: pd.DataFrame,
+    result: BacktestResult,
     output: Path,
     *,
+    holdout_start: pd.Timestamp,
     start: pd.Timestamp,
     end: pd.Timestamp,
     window: int,
@@ -161,7 +183,7 @@ def save_pnl_plot(  # noqa: PLR0913 (plot annotations describe the run)
     fee: float,
     slippage: int,
 ) -> Path:
-    """Save actual bar-close net P&L, including fees and unrealized exposure."""
+    """Save bar-close gross and net P&L, marking the held-out period."""
     import matplotlib as mpl  # noqa: PLC0415 (optional plotting dependency)
 
     mpl.use("Agg")
@@ -169,6 +191,7 @@ def save_pnl_plot(  # noqa: PLR0913 (plot annotations describe the run)
     import matplotlib.pyplot as plt  # noqa: PLC0415
     from matplotlib.ticker import StrMethodFormatter  # noqa: PLC0415
 
+    history = result.history
     if history.empty or "net_pnl" not in history:
         msg = "Backtest produced no net_pnl history."
         raise ValueError(msg)
@@ -176,24 +199,29 @@ def save_pnl_plot(  # noqa: PLR0913 (plot annotations describe the run)
     output.parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(12, 5.5), layout="constrained")
     try:
-        ax.plot(history.index, history["net_pnl"], color="#176b87", linewidth=1.4)
+        ax.plot(history.index, gross_pnl_path(result), color="#9a9a9a",
+                linewidth=1.1, label="Gross (before slippage and fees)")
+        ax.plot(history.index, history["net_pnl"], color="#176b87",
+                linewidth=1.4, label="Net")
         ax.axhline(0, color="#777777", linewidth=0.8, linestyle="--")
+        ax.axvspan(holdout_start, history.index[-1], color="#e8a33d",
+                   alpha=0.12, label="Held-out period")
+        ax.legend(loc="center left", fontsize=9)
         ax.set_title(f"{SYMBOL} | Bollinger middle-line mean reversion\n"
                      f"{start.date()} to {end.date()} (end exclusive) | "
                      f"{rule} bars | window={window}")
         ax.set_xlabel("Date (America/Chicago)")
-        ax.set_ylabel("Cumulative net P&L (USD)")
+        ax.set_ylabel("Cumulative P&L (USD)")
         ax.yaxis.set_major_formatter(StrMethodFormatter("${x:,.0f}"))
-        locator = mdates.AutoDateLocator(minticks=4, maxticks=8)
-        ax.xaxis.set_major_locator(locator)
-        ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(
-            locator, tz=ZoneInfo("America/Chicago")))
+        chicago = ZoneInfo("America/Chicago")
+        ax.xaxis.set_major_locator(mdates.MonthLocator(tz=chicago))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %Y", tz=chicago))
         ax.grid(alpha=0.2)
         final = history["net_pnl"].iloc[-1]
-        ax.text(0.01, 0.97, f"Final marked P&L: ${final:,.2f}\n"
+        ax.text(0.01, 0.03, f"Final marked net P&L: ${final:,.2f}\n"
                 f"Fee: ${fee:g}/contract/fill | slippage: {slippage} tick(s)\n"
                 "Includes unrealized P&L; no final liquidation",
-                transform=ax.transAxes, va="top", fontsize=9,
+                transform=ax.transAxes, va="bottom", fontsize=9,
                 bbox={"facecolor": "white", "alpha": 0.85, "edgecolor": "none"})
         fig.savefig(output, dpi=200)
     finally:
@@ -201,8 +229,67 @@ def save_pnl_plot(  # noqa: PLR0913 (plot annotations describe the run)
     return output
 
 
+def format_summary(name: str, summary: PeriodSummary) -> str:
+    """One readable block of gross/net/turnover figures for a period."""
+    return (
+        f"{name}: {summary.start} to {summary.end} ({summary.bars:,} bars)\n"
+        f"  gross P&L      ${summary.gross_pnl:>12,.2f}"
+        f"  (${summary.gross_pnl_per_contract:,.2f}/contract traded)\n"
+        f"  slippage       ${summary.slippage_cost:>12,.2f}\n"
+        f"  fees           ${summary.fees:>12,.2f}\n"
+        f"  net P&L        ${summary.net_pnl:>12,.2f}\n"
+        f"  turnover       {summary.contracts_traded:>13,} contracts in "
+        f"{summary.fills:,} fills\n"
+        f"  net max DD     ${summary.net_max_drawdown:>12,.2f}"
+        f" | daily net Sharpe {summary.daily_net_sharpe:.2f}"
+        f" | in market {summary.time_in_market:.0%}"
+    )
+
+
+def write_report(  # noqa: PLR0913 (records every assumption of the run)
+    path: Path,
+    args: argparse.Namespace,
+    config: BacktestConfig,
+    *,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    periods: dict[str, PeriodSummary],
+) -> Path:
+    """Write the run's assumptions and per-period results as JSON."""
+    report = {
+        "contract": SYMBOL,
+        "dataset": "GLBX.MDP3 trades",
+        "sample": {"start": str(start), "end_exclusive": str(end)},
+        "bar_duration": args.bar_rule,
+        "rule": f"BollingerMeanReversion(window={args.window}): +1 below the "
+                "rolling mean of closes, -1 above, hold on ties",
+        "horizon": "position held until the next signal change; signal "
+                   "evaluated at every bar close",
+        "execution": "next observed bar open (one-bar delay), market order",
+        "costs": {
+            "slippage_ticks_per_contract": config.slippage_ticks,
+            "tick_size": config.tick_size,
+            "fee_per_contract_per_fill": config.fee_per_contract,
+            "dollars_per_price_unit": config.dollars_per_price_unit,
+        },
+        "max_position": config.max_position,
+        "holdout_fraction": args.holdout_fraction,
+        "settings_chosen_before_holdout": True,
+        "periods": {
+            name: {key: str(value) if isinstance(value, pd.Timestamp) else value
+                   for key, value in asdict(summary).items()}
+            | {"gross_pnl_per_contract": summary.gross_pnl_per_contract,
+               "cost_per_contract": summary.cost_per_contract}
+            for name, summary in periods.items()
+        },
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, indent=2, allow_nan=True) + "\n")
+    return path
+
+
 def main(argv: list[str] | None = None) -> Path:
-    """Run the six-month ZCH7 Bollinger backtest and save the net-P&L chart."""
+    """Run the six-month ZCH7 Bollinger backtest; save chart and report."""
     args = parse_args(argv)
     trades, start, end = load_trades(args)
     trades = select_trades(trades, start, end)
@@ -228,10 +315,22 @@ def main(argv: list[str] | None = None) -> Path:
           f"first close: {bars['close'].iloc[0]:g}")
     result = run_backtest(bars, BollingerMeanReversion(window=args.window),
                           config, bar_duration=args.bar_rule)
-    output = save_pnl_plot(result.history, args.output, start=start, end=end,
-                           window=args.window, rule=args.bar_rule,
-                           fee=args.fee_per_contract, slippage=args.slippage_ticks)
-    print(f"Saved net P&L chart: {output}")
+    holdout_start = bars.index[int(len(bars) * (1 - args.holdout_fraction))]
+    periods = {
+        "full": summarize_period(result),
+        "development": summarize_period(result, end=holdout_start),
+        "holdout": summarize_period(result, start=holdout_start),
+    }
+    for name, summary in periods.items():
+        print(format_summary(name, summary))
+    output = save_pnl_plot(result, args.output, holdout_start=holdout_start,
+                           start=start, end=end, window=args.window,
+                           rule=args.bar_rule, fee=args.fee_per_contract,
+                           slippage=args.slippage_ticks)
+    report = write_report(args.output.with_suffix(".json"), args, config,
+                          start=start, end=end, periods=periods)
+    print(f"Saved gross/net P&L chart: {output}")
+    print(f"Saved report: {report}")
     return output
 
 
